@@ -1,0 +1,80 @@
+--------------------------排错系统---------------------------
+
+网络|光盘Rescue
+U盘
+
+ MBR故障（丢失）
+   分区表丢失
+
+导出完整分区表 查看 dd
+
+ 1> 观察系统的分区结构fdisk -l
+sda1 ---> /boot 
+sda2 ---> LVM 
+sda3 ---> swap 
+
+ 发现lvm的vg，lv
+vgs--vol0
+lvs --> home ---> root 
+
+ 2>  导出mbr记录 dd
+ 查询mbr内容 hexdump （故障系统自带该命令）
+
+
+ 3> 将故障系统的根目录挂载
+  
+问题1: Rescue无法识别lvm  激活lv
+ vgchange -ay vol0
+ls /dev/mapper/vol0-root
+
+ 新建挂载点/mnt/root  /mnt/root/boot/
+mount /dev/mapper/vol0-root /mnt/root 
+mount /dev/sda1 /mnt/root/boot/
+
+
+ hexdump ./mbr ---不完整
+
+修复通过grub修复mbr
+
+grub> root (hd0,0)
+grub> setup (hd0)
+
+
+------------------------------------------------
+
+
+ 启动引导器 grub
+ grub.conf文件 
+
+手动引导
+
+grub> root (hd0,0)
+grub> kernel /vmlinuz  ro root=/dev/mapper/vol0-root
+grub> initrd /initramfs-2.6.32-358.el6.x86_64.img
+grub> boot
+
+丢失grub.conf文件
+
+ --进入U盘系统 挂载根分区 然后新建grub.conf
+------------------------------------------
+
+启动文件|应用程序|二进制命令
+
+mount命令丢失
+/etc/fstab 文件丢失
+不停重启
+/tmp 权限
+ 
+----------任务------------------------------
+1 配置U盘系统(rhel6)  测试成功
+2 使用脚本快速部署U盘系统
+3 下载cfg文件 wget ftp://172.25.254.253/trouble.cfg
+              wget ftp://172.25.254.253/trouble2.cfg
+
+4 使用PXE发布cfg文件
+
+5 安装troubleshooting系统，修复故障
+------------------------------------------
+
+
+

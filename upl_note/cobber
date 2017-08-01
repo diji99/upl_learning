@@ -1,0 +1,687 @@
+PXE:
+
+kickstart
+cobbler  
+
+
+ http://www.cobblerd.org/
+ 
+Cobbler是一个快速网络安装linux的服务，而且在经过调整也可以支持网络安装windows。该工具使用python开发，小巧轻便，使用简单的命令即可完成PXE网络安装环境的配置，同时还可以管理DHCP，DNS，以及yum包镜像。Cobbler支持命令行管理，web界面管理，还提供了API接口，可以方便二次开发使用。和Kickstart不同的是，使用cobbler不会因为在局域网中启动了dhcp而导致有些机器因为默认从pxe启动在重启服务器后加载tftp内容导致启动终止。
+
+
+
+
+
+搭建： 192.168.0.1
+
+
+1> 下载软件
+   lftp 172.25.254.250:/notes/project> mirror cobbler_soft/
+
+   lftp 192.168.0.254:/notes/project> mirror cobbler_soft/
+
+
+2> 安装软件
+[root@node1 cobbler_soft]# rpm -ivh libyaml-0.1.4-2.3.x86_64.rpm 
+[root@node1 cobbler_soft]# rpm -ivh PyYAML-3.10-3.1.el6.x86_64.rpm 
+[root@node1 cobbler_soft]# rpm -ivh koan-2.6.9-1.el6.noarch.rpm 
+[root@node1 cobbler_soft]# rpm -ivh Django14-1.4.20-1.el6.noarch.rpm 
+[root@node1 cobbler_soft]# yum -y localinstall cobbler-2.6.3-1.el6.noarch.rpm
+[root@node1 cobbler_soft]# yum localinstall cobbler-web-2.6.3-1.el6.noarch.rpm 
+
+
+3> 基本配置
+
+[root@node1 cobbler_soft]# service cobblerd restart
+[root@node1 cobbler_soft]# chkconfig cobblerd on
+
+
+The following are potential configuration items that you may want to fix:
+
+1 : The 'server' field in /etc/cobbler/settings must be set to something other than localhost, or kickstarting features will not work.  This should be a resolvable hostname or IP for the boot server as reachable by all machines that will use it.
+2 : For PXE to be functional, the 'next_server' field in /etc/cobbler/settings must be set to something other than 127.0.0.1, and should match the IP of the boot server on the PXE network.
+3 : SELinux is enabled. Please review the following wiki page for details on ensuring cobbler works correctly in your SELinux environment:
+    https://github.com/cobbler/cobbler/wiki/Selinux
+4 : some network boot-loaders are missing from /var/lib/cobbler/loaders, you may run 'cobbler get-loaders' to download them, or, if you only want to handle x86/x86_64 netbooting, you may ensure that you have installed a *recent* version of the syslinux package installed and can ignore this message entirely.  Files in this directory, should you want to support all architectures, should include pxelinux.0, menu.c32, elilo.efi, and yaboot. The 'cobbler get-loaders' command is the easiest way to resolve these requirements.
+5 : change 'disable' to 'no' in /etc/xinetd.d/rsync
+6 : since iptables may be running, ensure 69, 80/443, and 25151 are unblocked
+7 : debmirror package is not installed, it will be required to manage debian deployments and repositories
+8 : ksvalidator was not found, install pykickstart
+9 : The default password used by the sample templates for newly installed machines (default_password_crypted in /etc/cobbler/settings) is still set to 'cobbler' and should be changed, try: "openssl passwd -1 -salt 'random-phrase-here' 'your-password-here'" to generate new one
+10 : fencing tools were not found, and are required to use the (optional) power management features. install cman or fence-agents to use them
+
+Restart cobblerd and then run 'cobbler sync' to apply changes.
+
+
+
+1>
+[root@node1 cobbler_soft]# vim /etc/cobbler/settings
+
+server: 192.168.0.1
+
+2>
+[root@node1 cobbler_soft]# vim /etc/cobbler/settings
+next_server: 192.168.0.1
+
+3> 
+[root@node1 cobbler_soft]# setenforce 0
+
+4> 
+[root@node1 cobbler_soft]# yum -y install syslinux
+
+
+5>
+[root@node1 cobbler_soft]# yum -y install rsync xinetd
+[root@node1 cobbler_soft]# chkconfig tftp on
+[root@node1 cobbler_soft]# service xinetd start
+[root@node1 cobbler_soft]# chkconfig xinetd on
+
+
+6>
+[root@node1 cobbler_soft]# iptables -F
+
+
+7>
+省略
+
+8>
+[root@node1 cobbler_soft]# yum -y install pykickstart
+
+
+9>
+[root@node1 cobbler_soft]# openssl passwd -1 -salt 'random-phrase-here' 'redhat'
+$1$random-p$MvGDzDfse5HkTwXB2OLNb.
+
+default_password_crypted: "$1$random-p$MvGDzDfse5HkTwXB2OLNb."
+
+
+
+
+10>
+fencing tools （电源设备） 
+[root@node1 cobbler_soft]# yum install fence-agents
+
+4 导入镜像
+以下是相关配置路径(默认安装) :
+
+Cobbler 配置主要位置：/var/lib/cobbler/
+snippets 代码  位置：/var/lib/cobbler/snippets/
+Kickstart 模板  位置 : /var/lib/cobbler/kickstarts/
+默认使用的ks文件: /var/lib/cobbler/kickstarts/default.ks
+安装源镜像       位置 : /var/www/cobbler/ks_mirror/ 
+
+
+
+[root@node1 cobbler_soft]#  wget ftp://192.168.0.254/notes/iso/rhel-server-6.3-x86_64-dvd.iso
+[root@node1 cobbler_soft]# mkdir -p /yum
+[root@node1 cobbler_soft]# mount -o loop rhel-server-6.3-x86_64-dvd.iso /yum
+[root@node1 ~]# cobbler import --path=/yum  --name=rhel-server-6.3-x86_64 --arch=x86_64 
+...
+*** TASK COMPLETE ***
+
+5 修改dhcp，让cobbler来管理dhcp，并进行cobbler配置同步
+
+[root@node1 cobbler_soft]# yum -y install dhcp
+[root@node1 cobbler_soft]# vim /etc/cobbler/dhcp.template 
+
+subnet 192.168.0.0 netmask 255.255.255.0 {
+     option routers             192.168.0.254;
+     option domain-name-servers 192.168.0.254;
+     option subnet-mask         255.255.255.0;
+     range dynamic-bootp        192.168.0.100 192.168.0.110;
+     default-lease-time         21600;
+     max-lease-time             43200;
+     next-server                $next_server;
+     class "pxeclients" {
+          match if substring (option vendor-class-identifier, 0, 9) = "PXEClient";
+          if option pxe-system-type = 00:02 {
+                  filename "ia64/elilo.efi";
+          } else if option pxe-system-type = 00:06 {
+                  filename "grub/grub-x86.efi";
+          } else if option pxe-system-type = 00:07 {
+                  filename "grub/grub-x86_64.efi";
+          } else {
+                  filename "pxelinux.0";
+          }
+     }
+
+}
+
+
+
+[root@node1 cobbler_soft]#  vim /etc/cobbler/settings
+manage_dhcp: 1
+
+
+[root@node1 cobbler_soft]# /etc/init.d/cobblerd restart
+
+[root@node1 cobbler_soft]# cobbler sync
+*** TASK COMPLETE ***
+
+
+测试验证：新建一个vmnet1网段（因为我前面配置的是这个网段）的虚拟机，然后启动，会出现cobbler的引导安装界面，选择并自动安装
+
+
+
+
+
+---------------------------------------------------------------------------
+
+
+补充1：
+cobbler的web管理
+
+
+web管理路径 
+# /etc/init.d/httpd restart   --先最好重启一下httpd服务
+重启时如果报443端口被占用，解决方法:
+# /etc/init.d/vmware-workstation-server stop
+# chkconfig vmware-workstation-server off
+
+
+
+然后通过firefox访问下面的路径
+http://IP/cobbler_web		--默认用户名cobbler,密码cobbler
+
+
+# htdigest /etc/cobbler/users.digest "Cobbler" abc	--增加一个abc用户
+Adding user abc in realm Cobbler
+New password: 
+Re-type new password: 
+
+# cat /etc/cobbler/users.digest 
+cobbler:Cobbler:a2d6bae81669d707b72c0bd9806e01f3
+abc:Cobbler:de5b9d396aa51c6710e62e555a2986ec
+
+
+
+=============================================================
+
+补充二:
+关于cobbler使用ks文件的讨论
+
+
+# cobbler distro list
+   rhel-server-6.5-x86_64
+
+
+设置profile(理解为在服务器端对每一个安装镜像做角色分类，如安装名与ks文件的关联）
+distro代表导入的镜像
+profile代表安装方案。一个distro可以对应一个或多个profile
+
+
+# cobbler profile help	--查看帮助
+# cobbler profile list	--查看有哪些profile，默认会有一个和先前导入镜像同名的profile
+   rhel-server-6.5-x86_64
+
+# cobbler profile report --name rhel-server-6.5-x86_64 |grep "^Kickstart" |head -1	--通过report报告查看名为rhel-server-6.5-x86_64的安装镜像默认使用的ks文件为/var/lib/cobbler/kickstarts/sample_end.ks
+Kickstart                      : /var/lib/cobbler/kickstarts/sample_end.ks
+
+
+# cobbler profile add --name=my_ks1 --distro=rhel-server-6.5-x86_64  --kickstart=/ks/ks.cfg   
+--把名为rhel-server-6.5-x86_64的安装镜像再加一个名为my_ks1的安装profile，使用的是/ks/ks.cfg文件（这是上次课讲kickstart时用的，你也可以自己再准备一个都行;但这里并不建议使用kickstart使用的ks文件，如果你要自己自定义，最好是去修改cobbler里的ks模版）
+
+
+# cobbler profile list		--经过上面的操作，最终我导入的rhel-server-6.5-x86_64镜像拥有两种安装方案（一个是同名的安装方案，使用/var/lib/cobbler/kickstarts/sample_end.ks自动安装文件；一个是刚自己加的安装方案名为my_ks1，使用/ks/ks.cfg自动安装文件）
+   my_ks1
+   rhel-server-6.5-x86_64
+
+再次使用客户端去安装验证，会出现两种安装方案给你选择
+
+
+对上面操作的扩展(仅供参考）
+# cobbler profile edit --name=my_ks1 --kickstart=/ks/ks2.cfg   --将my_ks1这个profile修改一个新的ks文件
+# cobbler profile remove --name=my_ks1	--删除my_ks1这个profile
+
+
+
+
+=================================================================
+
+补充三：
+针对ks文件的修改的讨论
+上面在补充二时提到，最好不要完全照搬kickstart使用的ks文件（因为你照搬过来后，很多功能和配置和cobbler不好连接）
+
+
+以上面的名字为rhel-server-6.5-x86_64的profile使用的ks文件/var/lib/cobbler/kickstarts/sample_end.ks为例来实验ks文件的修改
+
+vim /var/lib/cobbler/kickstarts/sample_end.ks
+# kickstart template for Fedora 8 and later.
+# (includes %end blocks)
+# do not use with earlier distros
+
+#platform=x86, AMD64, or Intel EM64T
+# System authorization information
+auth  --useshadow  --enablemd5
+# System bootloader configuration
+bootloader --location=mbr
+# Partition clearing information
+clearpart --all --initlabel
+# Use text mode install
+text
+# Firewall configuration
+firewall --enabled
+# Run the Setup Agent on first boot
+firstboot --disable
+# System keyboard
+keyboard us
+# System language
+lang en_US
+# Use network installation
+url --url=$tree
+# If any cobbler repo definitions were referenced in the kickstart profile, include them here.
+$yum_repo_stanza
+# Network information
+$SNIPPET('network_config')
+# Reboot after installation
+reboot
+
+#Root password
+rootpw --iscrypted $default_password_crypted
+# SELinux configuration
+selinux --disabled
+# Do not configure the X Window System
+skipx
+# System timezone
+timezone  America/New_York
+# Install OS instead of upgrade
+install
+# Clear the Master Boot Record
+zerombr
+# Allow anaconda to partition the system as needed
+part /boot --asprimary --fstype="ext4" --size=200
+part swap --asprimary --fstype="swap" --size=2000
+part / --asprimary --fstype="ext4" --grow --size=1           －－这里是把原来的一句autopart改成自己想要的分区形式（原来是分lvm，现在我定义了三个分区）
+
+
+%pre
+$SNIPPET('log_ks_pre')
+$SNIPPET('kickstart_start')
+$SNIPPET('pre_install_network_config')
+# Enable installation monitoring
+$SNIPPET('pre_anamon')
+%end
+
+%packages
+$SNIPPET('func_install_if_enabled')
+%end
+
+%post --nochroot
+$SNIPPET('log_ks_post_nochroot')
+%end
+
+%post
+$SNIPPET('log_ks_post')
+# Start yum configuration
+$yum_config_stanza
+# End yum configuration
+$SNIPPET('post_install_kernel_options')
+$SNIPPET('post_install_network_config')
+$SNIPPET('func_register_if_enabled')
+$SNIPPET('download_config_files')
+$SNIPPET('koan_environment')
+$SNIPPET('redhat_register')
+$SNIPPET('cobbler_register')
+# Enable post-install boot notification
+$SNIPPET('post_anamon')
+# Start final steps
+$SNIPPET('kickstart_done')
+# End final steps
+touch /root/123
+touch /tmp/123		--在这里又加了两句安装后的脚本，touch了两个文件
+%end
+
+
+保存后，用客户端安装rhel-server-6.5-x86_64来进行测试，最后发现分区和上面修改的一致，并且/root/123和/tmp/123这两个文件也都存在，说明上面的修改成功
+
+
+
+--总结：在生产环境，你可以按这种方式把cobbler的ks文件模版，按你的需求改成几种不同的方案，再使用补充2部分里讲的cobbler profile add把这些ks文件和安装镜像对应起来做成不同的profile
+
+
+
+＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝
+
+补充4：
+客户端使用koan与服务器的cobbler联系，实现自动重装系统
+
+在客户端安装koan-2.6.9-1.el6.noarch.rpm软件包
+
+# yum install koan-2.6.9-1.el6.noarch.rpm  --因为cobbler可以自动帮你解决yum的配置，所以依赖性可以直接帮你解决
+
+
+# koan --server=1.1.1.2 --list=profiles	   --1.1.1.2为cobbler服务器IP，得到的结果和在cobbler服务器上cobbler profile list命令得到的结果一样
+   my_ks1
+   rhel-server-6.5-x86_64
+
+
+＃ koan --replace-self --server=1.1.1.2 --profile=rhel-server-6.5-x86_64  --指定本客户端按照名为rhel-server-6.5-x86_64的profile重装系统
+
+# reboot  --敲完上面的命令，使用reboot，就会重装了（没敲上面的命令那reboot就是重启）
+
+
+=====================================================================
+
+
+假设你的公司有各种linux的安装需求(rhel,centos,ubuntu,suse,debian等)
+你现在要为公司设计所有的自动安装方案,怎么做?
+
+
+
+
+--------------------------------------------------------------------
+系统启动过程:
+ RHEL5  sysvinit  串行启动 init---> /etc/inittab 
+ RHEL6  Upstart   并行启动 init--> /etc/inittab(only runlevel) + /etc/init/  
+ RHEL7  systemd   更快的并行启动 
+
+Sysvinit   : /etc/init.d/network  
+ -->  service httpd restart
+
+LSB initscripts  : /usr/lib/systemd/system/httpd.service
+
+ --> systemctl restart  httpd.service
+
+
+
+++++++++++++++RHEL5启动过程++++++++++++++++
+
+ 第一部分:
+BIOS开机自检
+读取HD(磁盘)
+加载MBR（主引导记录）  存放磁盘的第一个扇区512字节           
+   MBR(bootloader引导器+DPT分区表（4*16）+ 2校验)
+
+第二部分: GRUB
+
+ bootloader引导器 ---> grub stage1 (引导器) ---> stage2 (grub.conf) -->menu.lst
+--> e2fs_stage1_5 ---> DPT
+
+--> 挂载引导分区 root (hd0,0) = /dev/sda1
+
+
+
+default=0  --默认从第一个title启动
+timeout=5  --等待时间
+splashimage=(hd0,0)/grub/splash.xpm.gz --背景图
+hiddenmenu --菜单
+title Red Hat Enterprise Linux Server (2.6.18-164.el5)  --标签名称
+	root (hd0,0)  --挂载boot分区
+	kernel /vmlinuz-2.6.18-164.el5 ro root=/dev/vol0/root rhgb quiet  --加载内核,只读挂载跟分区
+	initrd /initrd-2.6.18-164.el5.img --临时操作系统
+
+
+第三部分:  init (sysvinit)
+
+init 挂接/etc/和/lib 
+ 读取 /etc/inittab  --> id:5:initdefault:
+--> /etc/rc.d/rc.sysinit 初始化
+
+--> mount /etc/fstab 挂载设备
+
+--> /etc/rc.d/rcX.d  X=runlevel
+
+---> /etc/rc.d/rcX.d/S 	启动 /etc/rc.d/rcX.d/K 关闭
+
+--> rc.local 最后一个脚本
+
+
+--> 判断是否X  	启动图形界面
+x:5:respawn:/etc/X11/prefdm -nodaemon
+
+++++++++++++++++++++++++++++++++++++++
+
+
+
+
+RHEL6  区别 RHEL5
+
+initrd--initramfs
+/initramfs-2.6.32-279.el6.x86_64.img
+
+
+第三部分:
+ 
+ /etc/inittab --- runlevel  与 /etc/init/
+System initialization is started by /etc/init/rcS.conf ---> /etc/rc.d/rc.sysinit
+Individual runlevels are started by /etc/init/rc.conf  ---> /etc/rc.d/rcX.d
+Ctrl-Alt-Delete is handled by /etc/init/control-alt-delete.conf
+# Terminal gettys are handled by /etc/init/tty.conf and /etc/init/serial.conf,
+
+
+
+---------------------------------------------------------------------
+ grub--grub2
+ init--systemd
+
+
+
+
+
+
+U盘系统
+
+  了解系统的组成（重要的模块）
+  修复故障的系统
+
+
+如果能够进入当用户模式（第三部分以后故障【服务故障】）
+用户模式无法进去 
+   1 MBR丢失
+   2 /boot目录丢失文件 
+解决 1)  光盘自带Rescue模式 修复（救援）|（营救）模式
+     2)  PXE增加Rescue标签
+label rescue
+  menu label ^Rescue installed system
+  kernel vmlinuz
+  append initrd=initrd.img rescue
+     3) U盘系统
+
+
+系统组成:
+  内核、文件系统、SHELL、应用程序
+
+
+
+U盘系统部署:
+
+  1> 准备U盘 分区，格式化，设置为引导分区
+[root@i ~]# fdisk -l /dev/sdb
+[root@i ~]# dd if=/dev/zero of=/dev/sdb bs=500 count=1
+
+
+[root@i ~]# fdisk -cu /dev/sdb
+
+Command (m for help): n
+Command action
+   e   extended
+   p   primary partition (1-4)
+p
+Partition number (1-4): 1
+First sector (2048-62980095, default 2048): 
+Using default value 2048
+Last sector, +sectors or +size{K,M,G} (2048-62980095, default 62980095): +8G
+
+Command (m for help): a
+Partition number (1-4): 1
+
+Command (m for help): p
+
+Disk /dev/sdb: 32.2 GB, 32245809152 bytes
+64 heads, 32 sectors/track, 30752 cylinders, total 62980096 sectors
+Units = sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+Disk identifier: 0x00000000
+
+   Device Boot      Start         End      Blocks   Id  System
+/dev/sdb1   *        2048    16779263     8388608   83  Linux
+
+Command (m for help): w
+
+[root@i ~]# mkfs.ext4 /dev/sdb1
+
+[root@i ~]# mkdir /mnt/usb
+[root@i ~]# mount /dev/sdb1  /mnt/usb/
+[root@i ~]# df -h |grep mnt
+/dev/sdb1             7.9G  146M  7.4G   2% /mnt/usb
+
+
+
+
+2> 安装文件系统与BASH程序，重要命令（工具）、基础服务
+[root@i ~]# rpm -qf /
+filesystem-2.4.30-3.el6.x86_64
+[root@i ~]# rpm -qf /bin/bash
+bash-4.1.2-9.el6_2.x86_64
+[root@i ~]# rpm -qf /bin/ls
+coreutils-8.4-19.el6.x86_64
+[root@i ~]# rpm -qf /bin/mkdir
+coreutils-8.4-19.el6.x86_64
+[root@i ~]# rpm -qf `which passwd`
+passwd-0.77-4.el6_2.2.x86_64
+[root@i ~]# rpm -qf `which useradd`
+shadow-utils-4.1.4.2-13.el6.x86_64
+
+
+[root@i ~]# mkdir -p /dev/shm/usb
+
+yum -y install filesystem  --installroot=/dev/shm/usb/
+[root@i ~]#  coreutils passwd shadow-utils openssh-clients rpm yum net-tools bind-utils vim-enhanced findutils lvm2 util-linux-ng --installroot=/dev/shm/usb/
+
+[root@i ~]# cp -arv /dev/shm/usb/* /mnt/usb/
+
+
+
+3> 安装内核
+mkdir -p /mnt/usb/lib/modules/
+mkdir -p /mnt/usb/boot/
+[root@i ~]# cp /boot/vmlinuz-2.6.32-279.el6.x86_64  /mnt/usb/boot/
+[root@i ~]# cp /boot/initramfs-2.6.32-279.el6.x86_64.img  /mnt/usb/boot/
+[root@i ~]# cp -arv /lib/modules/2.6.32-279.el6.x86_64/  /mnt/usb/lib/modules/
+
+
+
+4> 安装GRUB程序
+[root@i ~]# rpm -ivh ftp://172.25.254.250/notes/project/software/grub-0.97-77.el6.x86_64.rpm --root=/mnt/usb/ --nodeps --force
+
+
+安装驱动:
+[root@i ~]# grub-install --root-directory=/mnt/usb/  --recheck  /dev/sdb
+grep: /mnt/usb//boot/grub/device.map: No such file or directory
+mv: cannot stat `/mnt/usb//boot/grub/device.map': No such file or directory
+Probing devices to guess BIOS drives. This may take a long time.
+Installation finished. No error reported.  --安装完成，没有错误报告
+This is the contents of the device map /mnt/usb//boot/grub/device.map.
+Check if this is correct or not. If any of the lines is incorrect,
+fix it and re-run the script `grub-install'.
+
+(fd0)	/dev/fd0
+(hd0)	/dev/sda
+(hd1)	/dev/sdb
+[root@i ~]# ls /mnt/usb/boot/grub/
+device.map     fat_stage1_5  iso9660_stage1_5  minix_stage1_5     stage1  ufs2_stage1_5    xfs_stage1_5
+e2fs_stage1_5  ffs_stage1_5  jfs_stage1_5      reiserfs_stage1_5  stage2  vstafs_stage1_5
+
+
+定义grub.conf
+[root@i ~]# cp /boot/grub/grub.conf /mnt/usb/boot/grub/
+
+
+
+[root@i ~]# blkid  /dev/sdb1 
+/dev/sdb1: UUID="4019049f-6890-4af7-bac8-ea4bcb729f0d" TYPE="ext4"
+
+
+[root@i ~]# vim /mnt/usb/boot/grub/grub.conf 
+default=0
+timeout=5
+splashimage=/boot/grub/splash.xpm.gz
+title  My USB System from uplooking
+        root (hd0,0)
+        kernel /boot/vmlinuz-2.6.32-358.el6.x86_64 ro root=UUID="4019049f-6890-4af7-bac8-ea4bcb729f0d"
+        initrd /boot/initramfs-2.6.32-358.el6.x86_64.img
+
+                                                       
+
+
+
+
+
+完善环境变量与配置文件:
+mkdir /mnt/usb/root/
+[root@i ~]# cp  /etc/skel/.bash* /mnt/usb/root/
+echo $PATH:/mnt/usb/usr/bin
+
+[root@i ~]# chroot /mnt/usb/
+[root@i /]# exit
+exit
+
+网络：
+mkdir -p /mnt/usb/etc/sysconfig/network-scripts
+[root@i ~]# vim /mnt/usb/etc/sysconfig/network-scripts/network
+NETWORKING=yes
+HOSTNAME=usb.hugo.org
+
+cp /etc/sysconfig/network-scripts/ifcfg-eth0 /mnt/usb/etc/sysconfig/network-scripts/
+
+
+cat > /mnt/usb/etc/sysconfig/network-scripts/ifcfg-eth0 << EOF
+DEVICE=eth0
+BOOTPROTO=none
+ONBOOT=yes
+USERCTL=no
+IPADDR=192.168.0.123
+NETMASK=255.255.255.0
+GATEWAY=192.168.0.254
+EOF
+
+
+cat > /mnt/usb/etc/fstab << EOF
+UUID="4019049f-6890-4af7-bac8-ea4bcb729f0d" / ext4 defaults 0 0
+sysfs                   /sys                    sysfs   defaults        0 0
+proc                    /proc                   proc    defaults        0 0
+tmpfs                   /dev/shm                tmpfs   defaults        0 0
+devpts                  /dev/pts                devpts  gid=5,mode=620  0 0
+EOF
+
+
+
+[root@i ~]# grub-md5-crypt 
+Password: 
+Retype password: 
+$1$qKIrQ/$dUdFiJ49LW70wmYqz2pcF/
+
+[root@i ~]# vim /mnt/usb/etc/shadow 
+root:$1$qKIrQ/$dUdFiJ49LW70wmYqz2pcF/:15422:0:99999:7:::
+
+
+-------------------------
+
+同步脏数据
+[root@i ~]# sync
+[root@i ~]# reboot
+
+
+选择从U盘启动
+
+ 
+
+
+++++++++++++++++++++++++++
+ 从网络引导 自动化安装系统（磁盘50G）
+
+菜单标签 "Troubleshoot-01"
+
+
+
+
+
+
+
+
+
+
+
+
+
