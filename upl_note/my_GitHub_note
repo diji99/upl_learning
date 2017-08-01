@@ -1,0 +1,60 @@
+通常情况下，一套分支只用来存放一套代码，为了保证每套代码的独立性，我们会建立多个分支来分开管理。
+| 命令                 | 说明         |
+| :----------------- | :--------- |
+| git branch         | 查看分支       |
+| git branch name    | 创建分支       |
+| git checkout name  | 切换分支       |
+| git merge name     | 合并某分支到当前分支 |
+| git branch -d name | 删除分支       |
+
+My github website:
+https://github.com/diji99/upl_learning
+
+My_remote_git:
+https://github.com/diji99/upl_learning.git
+
+##create a remote git:
+[root@foundation15 shell]# git remote add shell https://github.com/diji99/upl_learning.git  
+
+##push to my upl_learning.git
+[root@foundation15 shell]# git push -u shell master
+
+##clone and backup:
+[root@foundation15 shell]# git clone /root/Desktop/shell/ /backup1
+
+##pull my git:
+[root@foundation15 shell]# git pull https://github.com/diji99/upl_learning.git
+
+[root@foundation15 my_script]# git status
+# On branch master
+nothing to commit, working directory clean
+
+clone a remote git to local:
+[root@foundation15 ~]# git clone https://github.com/diji99/upl_learning.git
+
+##branch:
+[root@foundation15 my_script]# git branch upl_mysql
+[root@foundation15 my_script]# git branch
+* master
+  upl_mysql
+[root@foundation15 my_script]# git checkout upl_mysql
+Switched to branch 'upl_mysql'
+[root@foundation15 my_script]# git branch
+  master
+* upl_mysql
+[root@foundation15 my_script]# 
+
+##如果是远端服务器上的仓库，你的命令会是这个样子：
+git clone username@host:/path/to/repository
+
+##你的改动现在已经在本地仓库的 HEAD 中了。执行如下命令以将这些改动提交到远端仓库：
+git push origin master
+
+##如果你还没有克隆现有仓库，并欲将你的仓库连接到某个远程服务器，你可以使用如下命令添加：
+
+git remote add origin https://github.com/diji99/upl_learning.git
+
+##如此你就能够将你的改动推送到所添加的服务器上去了
+
+
+
