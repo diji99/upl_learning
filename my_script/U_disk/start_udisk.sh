@@ -125,7 +125,7 @@ redhat
 EOT
 
 
-sed -i 'root:*/c/root.$1$qKIrQ/$dUdFiJ49LW70wmYqz2pcF/' /mnt/usb/etc/shadow
+sed -i 'root:*/c/root:$1$qKIrQ/$dUdFiJ49LW70wmYqz2pcF/' /mnt/usb/etc/shadow
 
 #同步脏数据
 sync
